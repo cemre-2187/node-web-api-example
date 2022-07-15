@@ -1,64 +1,83 @@
-// Importing built-in modules
-const path = require('path') // getting path of the file
-
-// Importing libraries
-const express = require('express'); // express server
-const cors = require('cors'); // enabling cors
-const cookieParser = require('cookie-parser'); // parsing the cookie
-const helmet = require('helmet'); // for securing the server
-const dotenv = require('dotenv');
-const morgan = require('morgan');
-
-// .env file configuration
-dotenv.config({ path: path.resolve(process.cwd(), "./config/.env") });
-if (!process.env.NODE_ENV) {
-  throw new Error("The .env file is missing");
-}
-
-// Import dbs
-require('./dbs/postgres');
-
-// Starting express server
+// built in Nodemodules
+const path = require("path");
+// libraries and frameworks
+const express = require("express");
 const app = express();
+const cookieParser = require('cookie-parser')
+const compression = require('compression');
+const cors = require('cors');
+const helmet = require("helmet");
+// const httpStatus = require('http-status');
+const morgan = require("morgan");
+// internal modules/utils/middlewares/services
+const api = require("./api");
+const cookieService = require("./services/cookieService");
+const jwtService = require("./services/jwtService");
+const errorConverter = require('./middleware/errors/errorConverter');
+const errorHandler = require('./middleware/errors/errorHandler');
 
-// Importing Global Error Handler
-const globalErrorHandler = require('./utils/globalErrorHandler');
 
-// Routes
-const router = require('./routes/index');
+// parsing cookies for auth
+app.use(cookieParser())
 
-// Middlewares
-app.use(
-  cors({
-    origin: true,
-    credentials: true,
-    methods: ["GET", "POST", "PUT", "DELETE"],
-    exposedHeaders: ["x-total-count"],
-    domain: 'pintirim.com'
-  })
-);
-app.use(cookieParser());
-app.use(express.json({ limit: "50mb" }));
-app.use(express.urlencoded({ limit: "50mb", extended: true }));
-app.use(express.static(path.join(__dirname, "public/build"))); // serving static files
-app.use(helmet());
-
-// Setting up logger&enabling app to trust proxy to make morgan get the client Ip
-app.enable("trust proxy");
-app.use(morgan(":remote-addr * :remote-user * [:date[clf]] * :method * :url * HTTP/:http-version * :status * :res[content-length] * :response-time ms"));
-
-app.use('/api', router);
-
-// Sending error html if no route matches
-app.all('*', (req, res, next) => {
-  res
-    .status(404)
-    .sendFile(
-      path.join(__dirname + "/templates/errors/error_page_400.html")
-    );
+// adding userId to the request object if exists w/o verifying the token
+app.use((req, res, next) => {
+    const { __session } = req.cookies;
+    req.userId = "Guest";
+    if (__session) {
+        // decode jwt token from cookie session and verify
+        const token = cookieService.decrypt(__session);
+        const payload = jwtService.decode(token);
+        if (payload) {
+            req.userId = payload.id;
+        }
+    };
+    next();
 });
 
-// Error handling middleware
-app.use(globalErrorHandler);
+// setting up logger
+if (process.env.NODE_ENV === "development") {
+    app.use(morgan("dev"));
+};
 
+// opening cors for development
+app.use(cors());
+
+// setting security HTTP headers
+app.use(helmet({
+    crossOriginResourcePolicy: false,
+}));
+
+// parsing incoming requests with JSON body payloads
+app.use(express.json());
+
+// parsing incoming requests with urlencoded body payloads
+app.use(express.urlencoded({ extended: true }));
+
+// handling gzip compression
+app.use(compression());
+
+// redirecting incoming requests to api.js
+app.use(`/api`, api);
+
+// setting up a 404 error handler
+app.all("*", (req, res, next) => {
+    res.status(404).end();
+});
+
+// converting error to AppError, if needed
+app.use(errorConverter);
+
+// handling error
+app.use(errorHandler);
+
+
+// returning the main index.html, so react-router render the route in the client
+// app.get("*", (req, res) => {
+//     res.sendFile(path.resolve(__dirname, "../", "client/", "build", "index.html",));
+// });
+
+// serving the static files
+// app.use(express.static(path.join(__dirname, "../", "client/", "build")));
+// app.use(express.static(path.join(__dirname, "images")));
 module.exports = app;

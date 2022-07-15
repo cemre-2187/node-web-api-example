@@ -1,8 +1,7 @@
-// Function wraps the controllers and returns the errors to the global error handler
-const catchAsync = (func) => {
+module.exports = fn => {
     return (req, res, next) => {
-        func(req, res, next).catch(next);
-    }
-}
-
-module.exports = catchAsync;
+        fn(req, res, next).catch(err => {
+            next(err)
+        });
+    };
+};

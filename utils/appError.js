@@ -1,16 +1,18 @@
-// Global error class extending built-in Error class
 class AppError extends Error {
-    constructor(message, statusCode, isOperational = true, name = "Error", stack = '') {
-        super(message)
-        // assisn statusCode and status
-        this.statusCode = statusCode
-        this.status = `${statusCode}`.startsWith(4) ? 'fail' : 'error';
+    constructor(statusCode, message, isOperational = true, name = "Error", stack = '') {
+        super(message);
+
+        this.statusCode = statusCode;
+        this.name = name;
+        this.status = `${statusCode}`.startsWith('4') ? 'fail' : 'error';
         this.isOperational = isOperational;
-        this.name = name
+
         if (stack) {
-            this.stack = stack
+            this.stack = stack;
+        } else {
+            Error.captureStackTrace(this, this.constructor);
         }
-        Error.captureStackTrace(this, this.constructor)
     }
-}
+};
+
 module.exports = AppError;
